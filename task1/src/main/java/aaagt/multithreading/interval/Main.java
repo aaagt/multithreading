@@ -3,22 +3,28 @@ package aaagt.multithreading.interval;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class Main {
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) throws InterruptedException, ExecutionException {
         String[] texts = new String[25];
         for (int i = 0; i < texts.length; i++) {
             texts[i] = generateText("aab", 30_000);
         }
 
-        List<Thread> threads = new ArrayList<>();
+        List<Future<Integer>> futures = new ArrayList<>();
+        ExecutorService es = Executors.newFixedThreadPool(4);
 
         // start time
         long startTs = System.currentTimeMillis();
 
         for (String text : texts) {
-            Runnable run = () -> {
+            final Callable<Integer> task = () -> {
                 int maxSize = 0;
                 for (int i = 0; i < text.length(); i++) {
                     for (int j = 0; j < text.length(); j++) {
@@ -38,22 +44,32 @@ public class Main {
                     }
                 }
                 System.out.println(text.substring(0, 100) + " -> " + maxSize);
+                return maxSize;
             };
 
-            Thread thread = new Thread(run);
-            threads.add(thread);
-            thread.start();
+            Future<Integer> fut = es.submit(task);
+            futures.add(fut);
         }
 
-        // зависаем, ждём когда поток объект которого лежит в thread завершится
-        for (Thread thread : threads) {
-            thread.join();
-        }
+        // получаем результаты
+        int maxSize = futures.stream()
+                .map(Main::getFutureValue)
+                .reduce(Math::max)
+                .get();
 
         // end time
         long endTs = System.currentTimeMillis();
 
+        System.out.println("Max interval: " + maxSize);
         System.out.println("Time: " + (endTs - startTs) + "ms");
+    }
+
+    public static int getFutureValue(Future<Integer> integerFuture) {
+        try {
+            return integerFuture.get();
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static String generateText(String letters, int length) {
